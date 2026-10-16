@@ -1,0 +1,884 @@
+SIAPP Fadil 🔥 Aku buatkan versi template Laravel UTS One to One dari awal sampai selesai, sama seperti versi One to Many sebelumnya. Bedanya, relasi One to One menggunakan `hasOne()` dan `belongsTo()`, bukan `hasMany()`.
+
+Contoh yang kita pakai adalah Siswa dan Biodata: satu siswa memiliki satu biodata, dan satu biodata dimiliki oleh satu siswa.
+
+# 1. Alur pengerjaan
+
+- 1\. Membuat project Laravel.
+- 2\. Mengatur database di `.env`.
+- 3\. Membuat tabel manual lewat phpMyAdmin dengan SQL DDL.
+- 4\. Membuat model dan relasi One to One.
+- 5\. Membuat controller CRUD.
+- 6\. Membuat login, register, dan logout.
+- 7\. Mengatur route.
+- 8\. Membuat semua file Blade.
+- 9\. Menjalankan dan menguji aplikasi.
+
+## 2. Membuat project Laravel
+
+Buka terminal Laragon atau VS Code:
+
+```
+cd C:\laragon\www
+composer create-project laravel/laravel uts-one-to-one
+cd uts-one-to-one
+code .
+```
+
+Jika project sudah ada, kamu tidak perlu membuatnya lagi.
+
+## 3. Membuat database di phpMyAdmin
+
+Buat database bernama `uts_one_to_one`, lalu buka menu SQL dan jalankan kode berikut.
+
+```
+CREATE TABLE users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+CREATE TABLE siswa (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    nama_siswa VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL
+);
+
+CREATE TABLE biodata (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    siswa_id BIGINT UNSIGNED NOT NULL UNIQUE,
+    alamat VARCHAR(255) NOT NULL,
+    no_hp VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NULL,
+    updated_at TIMESTAMP NULL,
+    FOREIGN KEY (siswa_id)
+        REFERENCES siswa(id)
+        ON DELETE CASCADE
+);
+```
+
+Kenapa `siswa_id` diberi `UNIQUE`? Karena satu siswa hanya boleh memiliki satu biodata. `ON DELETE CASCADE` berarti biodata ikut terhapus jika siswa yang bersangkutan dihapus.
+
+## 4. Mengatur file `.env`
+
+Buka `.env`, lalu sesuaikan pengaturan database:
+
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=uts_one_to_one
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+Sesuaikan username dan password MySQL dengan pengaturan Laragon milikmu.
+
+Setelah itu jalankan:
+
+```
+php artisan config:clear
+```
+
+Jangan menjalankan `php artisan migrate` untuk membuat tabel di atas karena kita sudah membuatnya manual melalui phpMyAdmin.
+
+## 5. Membuat model
+
+Jalankan perintah berikut:
+
+```
+php artisan make:model Siswa
+php artisan make:model Biodata
+```
+
+### `app/Models/Siswa.php`
+
+```
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Siswa extends Model
+{
+    protected $table = 'siswa';
+
+    protected $fillable = ['nama_siswa'];
+
+    public function biodata()
+    {
+        return $this->hasOne(Biodata::class);
+    }
+}
+```
+
+### `app/Models/Biodata.php`
+
+```
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Biodata extends Model
+{
+    protected $table = 'biodata';
+
+    protected $fillable = [
+        'siswa_id',
+        'alamat',
+        'no_hp'
+    ];
+
+    public function siswa()
+    {
+        return $this->belongsTo(Siswa::class);
+    }
+}
+```
+
+Ingat:
+
+- `hasOne()` berada di model pemilik relasi, yaitu `Siswa`.
+- `belongsTo()` berada di model `Biodata` yang memiliki foreign key `siswa_id`.
+
+## 6. Membuat controller
+
+```
+php artisan make:controller AuthController
+php artisan make:controller SiswaController --resource
+php artisan make:controller BiodataController --resource
+```
+
+Agar tidak membingungkan, fokus dulu pada pola controller berikut.
+
+### `app/Http/Controllers/SiswaController.php`
+
+```
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Siswa;
+use Illuminate\Http\Request;
+
+class SiswaController extends Controller
+{
+    public function index()
+    {
+        $siswa = Siswa::with('biodata')->get();
+
+        return view('siswa.index', compact('siswa'));
+    }
+
+    public function create()
+    {
+        return view('siswa.create');
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'nama_siswa' => 'required|string|max:100'
+        ]);
+
+        Siswa::create($request->only('nama_siswa'));
+
+        return redirect()->route('siswa.index')
+            ->with('success', 'Siswa berhasil ditambahkan');
+    }
+
+    public function show(Siswa $siswa)
+    {
+        $siswa->load('biodata');
+
+        return view('siswa.show', compact('siswa'));
+    }
+
+    public function edit(Siswa $siswa)
+    {
+        return view('siswa.edit', compact('siswa'));
+    }
+
+    public function update(Request $request, Siswa $siswa)
+    {
+        $request->validate([
+            'nama_siswa' => 'required|string|max:100'
+        ]);
+
+        $siswa->update($request->only('nama_siswa'));
+
+        return redirect()->route('siswa.index')
+            ->with('success', 'Siswa berhasil diubah');
+    }
+
+    public function destroy(Siswa $siswa)
+    {
+        $siswa->delete();
+
+        return redirect()->route('siswa.index')
+            ->with('success', 'Siswa berhasil dihapus');
+    }
+}
+```
+
+### `app/Http/Controllers/BiodataController.php`
+
+```
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Biodata;
+use App\Models\Siswa;
+use Illuminate\Http\Request;
+
+class BiodataController extends Controller
+{
+    public function index()
+    {
+        $biodata = Biodata::with('siswa')->get();
+
+        return view('biodata.index', compact('biodata'));
+    }
+
+    public function create()
+    {
+        $siswa = Siswa::doesntHave('biodata')->get();
+
+        return view('biodata.create', compact('siswa'));
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'siswa_id' => 'required|exists:siswa,id|unique:biodata,siswa_id',
+            'alamat' => 'required|string|max:255',
+            'no_hp' => 'required|string|max:20'
+        ]);
+
+        Biodata::create($request->only([
+            'siswa_id', 'alamat', 'no_hp'
+        ]));
+
+        return redirect()->route('biodata.index')
+            ->with('success', 'Biodata berhasil ditambahkan');
+    }
+
+    public function show(Biodata $biodatum)
+    {
+        $biodatum->load('siswa');
+
+        return view('biodata.show', ['biodata' => $biodatum]);
+    }
+
+    public function edit(Biodata $biodatum)
+    {
+        $siswa = Siswa::where(function ($query) use ($biodatum) {
+            $query->whereDoesntHave('biodata')
+                ->orWhere('id', $biodatum->siswa_id);
+        })->get();
+
+        return view('biodata.edit', [
+            'biodata' => $biodatum,
+            'siswa' => $siswa
+        ]);
+    }
+
+    public function update(Request $request, Biodata $biodatum)
+    {
+        $request->validate([
+            'siswa_id' => 'required|exists:siswa,id|unique:biodata,siswa_id,' . $biodatum->id,
+            'alamat' => 'required|string|max:255',
+            'no_hp' => 'required|string|max:20'
+        ]);
+
+        $biodatum->update($request->only([
+            'siswa_id', 'alamat', 'no_hp'
+        ]));
+
+        return redirect()->route('biodata.index')
+            ->with('success', 'Biodata berhasil diubah');
+    }
+
+    public function destroy(Biodata $biodatum)
+    {
+        $biodatum->delete();
+
+        return redirect()->route('biodata.index')
+            ->with('success', 'Biodata berhasil dihapus');
+    }
+}
+```
+
+Laravel secara default mencari parameter route `biodatum` untuk model `Biodata` karena nama variabelnya `$biodatum`. Kita akan menyesuaikan route-nya agar cocok.
+
+## 7. Login, register, dan logout
+
+Untuk autentikasi manual, kita menggunakan tabel `users` yang sudah dibuat.
+
+### `app/Http/Controllers/AuthController.php`
+
+```
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+
+class AuthController extends Controller
+{
+    public function login()
+    {
+        return view('auth.login');
+    }
+
+    public function authenticate(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required'
+        ]);
+
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
+
+            return redirect()->route('siswa.index');
+        }
+
+        return back()->withErrors([
+            'email' => 'Email atau password salah.'
+        ])->onlyInput('email');
+    }
+
+    public function register()
+    {
+        return view('auth.register');
+    }
+
+    public function storeRegister(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:100',
+            'email' => 'required|email|unique:users,email',
+            'password' => 'required|min:8|confirmed'
+        ]);
+
+        User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password'])
+        ]);
+
+        return redirect()->route('login')
+            ->with('success', 'Registrasi berhasil. Silakan login.');
+    }
+
+    public function logout(Request $request)
+    {
+        Auth::logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login');
+    }
+}
+```
+
+Buka `app/Models/User.php` dan pastikan bagian `$fillable` mengizinkan `name`, `email`, dan `password`. Model bawaan Laravel umumnya sudah memiliki pengaturan tersebut.
+
+## 8. Mengatur route
+
+Buka `routes/web.php`, lalu isi:
+
+```
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\SiswaController;
+use App\Http\Controllers\BiodataController;
+
+Route::get('/', fn () => redirect()->route('login'));
+
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'login'])
+        ->name('login');
+
+    Route::post('/login', [AuthController::class, 'authenticate'])
+        ->name('login.process');
+
+    Route::get('/register', [AuthController::class, 'register'])
+        ->name('register');
+
+    Route::post('/register', [AuthController::class, 'storeRegister'])
+        ->name('register.process');
+});
+
+Route::middleware('auth')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])
+        ->name('logout');
+
+    Route::resource('siswa', SiswaController::class);
+
+    Route::resource('biodata', BiodataController::class)
+        ->parameters(['biodata' => 'biodatum']);
+});
+```
+
+Bagian `parameters(['biodata' => 'biodatum'])` menyelaraskan nama parameter dengan controller yang tadi dibuat.
+
+## 9. Membuat seluruh file Blade
+
+Buat folder berikut di `resources/views/`:
+
+```
+resources/views/
+├── layouts/
+│   └── app.blade.php
+├── auth/
+│   ├── login.blade.php
+│   └── register.blade.php
+├── siswa/
+│   ├── index.blade.php
+│   ├── create.blade.php
+│   ├── edit.blade.php
+│   └── show.blade.php
+└── biodata/
+    ├── index.blade.php
+    ├── create.blade.php
+    ├── edit.blade.php
+    └── show.blade.php
+```
+
+### A. `layouts/app.blade.php`
+
+```
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@yield('title', 'UTS One to One')</title>
+</head>
+<body>
+    <nav>
+        <a href="{{ route('siswa.index') }}">Siswa</a> |
+        <a href="{{ route('biodata.index') }}">Biodata</a>
+
+        @auth
+            <form action="{{ route('logout') }}" method="POST" style="display:inline">
+                @csrf
+                <button type="submit">Logout</button>
+            </form>
+        @endauth
+    </nav>
+
+    <hr>
+
+    @if(session('success'))
+        <p>{{ session('success') }}</p>
+    @endif
+
+    @if($errors->any())
+        <ul>
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    @endif
+
+    @yield('content')
+</body>
+</html>
+```
+
+### B. `auth/login.blade.php`
+
+```
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+    <h1>Login</h1>
+
+    @if(session('success'))
+        <p>{{ session('success') }}</p>
+    @endif
+
+    @if($errors->any())
+        <p>Email atau password salah, atau data belum valid.</p>
+    @endif
+
+    <form action="{{ route('login.process') }}" method="POST">
+        @csrf
+
+        <label>Email</label>
+        <input type="email" name="email" value="{{ old('email') }}" required>
+
+        <label>Password</label>
+        <input type="password" name="password" required>
+
+        <button type="submit">Login</button>
+    </form>
+
+    <a href="{{ route('register') }}">Belum punya akun? Register</a>
+</body>
+</html>
+```
+
+### C. `auth/register.blade.php`
+
+```
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Register</title>
+</head>
+<body>
+    <h1>Register</h1>
+
+    @if($errors->any())
+        <ul>
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    @endif
+
+    <form action="{{ route('register.process') }}" method="POST">
+        @csrf
+
+        <label>Nama</label>
+        <input type="text" name="name" value="{{ old('name') }}" required>
+
+        <label>Email</label>
+        <input type="email" name="email" value="{{ old('email') }}" required>
+
+        <label>Password</label>
+        <input type="password" name="password" required>
+
+        <label>Konfirmasi Password</label>
+        <input type="password" name="password_confirmation" required>
+
+        <button type="submit">Daftar</button>
+    </form>
+
+    <a href="{{ route('login') }}">Sudah punya akun? Login</a>
+</body>
+</html>
+```
+
+### D. `siswa/index.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Data Siswa')
+
+@section('content')
+<h1>Data Siswa</h1>
+
+<a href="{{ route('siswa.create') }}">Tambah Siswa</a>
+<a href="{{ route('biodata.index') }}">Kelola Biodata</a>
+
+<table border="1" cellpadding="8">
+    <tr>
+        <th>ID</th>
+        <th>Nama Siswa</th>
+        <th>Biodata</th>
+        <th>Aksi</th>
+    </tr>
+
+    @foreach($siswa as $item)
+    <tr>
+        <td>{{ $item->id }}</td>
+        <td>{{ $item->nama_siswa }}</td>
+        <td>
+            @if($item->biodata)
+                {{ $item->biodata->alamat }}
+                ({{ $item->biodata->no_hp }})
+            @else
+                Belum ada biodata
+            @endif
+        </td>
+        <td>
+            <a href="{{ route('siswa.show', $item->id) }}">Detail</a>
+            <a href="{{ route('siswa.edit', $item->id) }}">Edit</a>
+
+            <form action="{{ route('siswa.destroy', $item->id) }}"
+                  method="POST" style="display:inline">
+                @csrf
+                @method('DELETE')
+                <button type="submit">Hapus</button>
+            </form>
+        </td>
+    </tr>
+    @endforeach
+</table>
+@endsection
+```
+
+### E. `siswa/create.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Tambah Siswa')
+
+@section('content')
+<h1>Tambah Siswa</h1>
+
+<form action="{{ route('siswa.store') }}" method="POST">
+    @csrf
+
+    <label>Nama Siswa</label>
+    <input type="text" name="nama_siswa" value="{{ old('nama_siswa') }}" required>
+
+    <button type="submit">Simpan</button>
+</form>
+
+<a href="{{ route('siswa.index') }}">Kembali</a>
+@endsection
+```
+
+### F. `siswa/edit.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Edit Siswa')
+
+@section('content')
+<h1>Edit Siswa</h1>
+
+<form action="{{ route('siswa.update', $siswa->id) }}" method="POST">
+    @csrf
+    @method('PUT')
+
+    <label>Nama Siswa</label>
+    <input type="text" name="nama_siswa"
+           value="{{ old('nama_siswa', $siswa->nama_siswa) }}" required>
+
+    <button type="submit">Update</button>
+</form>
+
+<a href="{{ route('siswa.index') }}">Kembali</a>
+@endsection
+```
+
+### G. `siswa/show.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Detail Siswa')
+
+@section('content')
+<h1>Detail Siswa</h1>
+
+<p>ID: {{ $siswa->id }}</p>
+<p>Nama: {{ $siswa->nama_siswa }}</p>
+
+<h2>Biodata</h2>
+
+@if($siswa->biodata)
+    <p>Alamat: {{ $siswa->biodata->alamat }}</p>
+    <p>No. HP: {{ $siswa->biodata->no_hp }}</p>
+    <a href="{{ route('biodata.edit', $siswa->biodata->id) }}">
+        Edit Biodata
+    </a>
+@else
+    <p>Siswa ini belum memiliki biodata.</p>
+    <a href="{{ route('biodata.create') }}">Tambah Biodata</a>
+@endif
+
+<a href="{{ route('siswa.index') }}">Kembali</a>
+@endsection
+```
+
+### H. `biodata/index.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Data Biodata')
+
+@section('content')
+<h1>Data Biodata</h1>
+
+<a href="{{ route('biodata.create') }}">Tambah Biodata</a>
+
+<table border="1" cellpadding="8">
+    <tr>
+        <th>ID</th>
+        <th>Nama Siswa</th>
+        <th>Alamat</th>
+        <th>No. HP</th>
+        <th>Aksi</th>
+    </tr>
+
+    @foreach($biodata as $item)
+    <tr>
+        <td>{{ $item->id }}</td>
+        <td>{{ $item->siswa->nama_siswa }}</td>
+        <td>{{ $item->alamat }}</td>
+        <td>{{ $item->no_hp }}</td>
+        <td>
+            <a href="{{ route('biodata.show', $item->id) }}">Detail</a>
+            <a href="{{ route('biodata.edit', $item->id) }}">Edit</a>
+
+            <form action="{{ route('biodata.destroy', $item->id) }}"
+                  method="POST" style="display:inline">
+                @csrf
+                @method('DELETE')
+                <button type="submit">Hapus</button>
+            </form>
+        </td>
+    </tr>
+    @endforeach
+</table>
+@endsection
+```
+
+### I. `biodata/create.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Tambah Biodata')
+
+@section('content')
+<h1>Tambah Biodata</h1>
+
+<form action="{{ route('biodata.store') }}" method="POST">
+    @csrf
+
+    <label>Siswa</label>
+    <select name="siswa_id" required>
+        <option value="">-- Pilih Siswa --</option>
+        @foreach($siswa as $item)
+            <option value="{{ $item->id }}"
+                @selected(old('siswa_id') == $item->id)>
+                {{ $item->nama_siswa }}
+            </option>
+        @endforeach
+    </select>
+
+    <label>Alamat</label>
+    <input type="text" name="alamat" value="{{ old('alamat') }}" required>
+
+    <label>No. HP</label>
+    <input type="text" name="no_hp" value="{{ old('no_hp') }}" required>
+
+    <button type="submit">Simpan</button>
+</form>
+
+<a href="{{ route('biodata.index') }}">Kembali</a>
+@endsection
+```
+
+### J. `biodata/edit.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Edit Biodata')
+
+@section('content')
+<h1>Edit Biodata</h1>
+
+<form action="{{ route('biodata.update', $biodata->id) }}" method="POST">
+    @csrf
+    @method('PUT')
+
+    <label>Siswa</label>
+    <select name="siswa_id" required>
+        @foreach($siswa as $item)
+            <option value="{{ $item->id }}"
+                @selected(old('siswa_id', $biodata->siswa_id) == $item->id)>
+                {{ $item->nama_siswa }}
+            </option>
+        @endforeach
+    </select>
+
+    <label>Alamat</label>
+    <input type="text" name="alamat"
+           value="{{ old('alamat', $biodata->alamat) }}" required>
+
+    <label>No. HP</label>
+    <input type="text" name="no_hp"
+           value="{{ old('no_hp', $biodata->no_hp) }}" required>
+
+    <button type="submit">Update</button>
+</form>
+
+<a href="{{ route('biodata.index') }}">Kembali</a>
+@endsection
+```
+
+### K. `biodata/show.blade.php`
+
+```
+@extends('layouts.app')
+
+@section('title', 'Detail Biodata')
+
+@section('content')
+<h1>Detail Biodata</h1>
+
+<p>Nama Siswa: {{ $biodata->siswa->nama_siswa }}</p>
+<p>Alamat: {{ $biodata->alamat }}</p>
+<p>No. HP: {{ $biodata->no_hp }}</p>
+
+<a href="{{ route('biodata.edit', $biodata->id) }}">Edit</a>
+<a href="{{ route('biodata.index') }}">Kembali</a>
+@endsection
+```
+
+## 10. Menjalankan dan menguji aplikasi
+
+Jalankan:
+
+```
+php artisan route:list
+php artisan serve
+```
+
+Buka alamat yang muncul di terminal, biasanya `http://127.0.0.1:8000`.
+
+Urutan pengujian:
+
+1. Buka halaman register dan buat akun.
+2. Login menggunakan akun tersebut.
+3. Tambahkan beberapa siswa.
+4. Tambahkan satu biodata untuk salah satu siswa.
+5. Pastikan siswa tersebut menampilkan biodatanya.
+6. Coba menambahkan biodata kedua untuk siswa yang sama — seharusnya ditolak.
+7. Coba edit dan hapus siswa maupun biodata.
+8. Logout dan pastikan halaman CRUD meminta login kembali.
+
+## 11. Ringkasan One to One untuk UTS
+
+| One to One                                                | One to Many                         |
+| --------------------------------------------------------- | ----------------------------------- |
+| `hasOne()`                                                | `hasMany()`                         |
+| Satu siswa punya satu biodata                             | Satu jurusan punya banyak siswa     |
+| Foreign key dibuat `UNIQUE` untuk memastikan satu-ke-satu | Foreign key biasanya tidak `UNIQUE` |
+| Contoh: Siswa–Biodata                                     | Contoh: Jurusan–Siswa               |
+
+Catatan penting: template ini mencakup seluruh file inti, tetapi tetap perlu diuji di versi Laravel dan database yang kamu gunakan. Jika kamu mengikuti semua langkah dan muncul error, kirim pesan error atau screenshot-nya agar bisa diperbaiki sesuai proyekmu.
